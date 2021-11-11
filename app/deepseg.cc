@@ -444,10 +444,25 @@ int main(int argc, char* argv[]) try {
 	// mainloop
 	for(bool running = true; running; ) {
 		// grab new frame from cam
-		cap.grab();
+		if (! cap.grab()) {
+      printf("Failed to grab!\n");
+      cap.open(ccam, cv::CAP_V4L2);
+      if(!cap.isOpened()) {
+        perror("failed to open video device");
+        exit(1);
+      }
+
+      cap.set(cv::CAP_PROP_FRAME_WIDTH,  width);
+      cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+      if (fourcc)
+        cap.set(cv::CAP_PROP_FOURCC, fourcc);
+      cap.set(cv::CAP_PROP_CONVERT_RGB, true);
+    }
 		ti.grabns=timestamp();
 		// copy new frame to buffer
-		cap.retrieve(raw);
+		if (! cap.retrieve(raw)) {
+      printf("Retrieve failed!\n");
+    }
 		ti.retrns=timestamp();
 		ai.set_input_frame(raw);
 		ti.copyns=timestamp();
@@ -500,7 +515,9 @@ int main(int argc, char* argv[]) try {
 		}
 
 		// timing details..
-		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f] \e[K\r",
+    long total_ai_ns = ai.prepns + ai.tfltns + ai.maskns;
+    float theoretical_ai_fps = 1000000000.0 / total_ai_ns;
+		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f (theoretical max: %3.1f] \e[K\r",
 			diffnanosecs(ti.grabns,ti.lastns),
 			diffnanosecs(ti.retrns,ti.grabns),
 			diffnanosecs(ti.copyns,ti.retrns),
@@ -513,7 +530,8 @@ int main(int argc, char* argv[]) try {
 			ai.prepns,
 			ai.tfltns,
 			ai.maskns,
-			1e9/ai.loopns
+			1e9/ai.loopns,
+      theoretical_ai_fps
 		);
 		fflush(stdout);
 		ti.lastns = timestamp();
