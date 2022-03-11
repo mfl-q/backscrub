@@ -434,7 +434,9 @@ int main(int argc, char* argv[]) try {
 	cap.set(cv::CAP_PROP_CONVERT_RGB, true);
 
 	cv::Mat mask(height, width, CV_8U);
-	cv::Mat raw;
+	cv::Mat rawinput[2]; // double buffered
+  cv::Mat raw;
+  int active_rawinput = 0;
 	CalcMask ai(modelname, threads, width, height);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
@@ -460,14 +462,19 @@ int main(int argc, char* argv[]) try {
     }
 		ti.grabns=timestamp();
 		// copy new frame to buffer
-		if (! cap.retrieve(raw)) {
+    active_rawinput ^= 1; // flip active input buffer
+		if (! cap.retrieve(rawinput[active_rawinput])) {
       printf("Retrieve failed!\n");
     }
-		ti.retrns=timestamp();
-		ai.set_input_frame(raw);
+		
+    ti.retrns=timestamp();
+		ai.set_input_frame(rawinput[active_rawinput]); // send newest frame to analysis
+    // but continue with the previous frame (introduces a one frame video delay)
+    raw = rawinput[active_rawinput ^ 1];
+		
+    if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 		ti.copyns=timestamp();
 
-		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		if (blur_strength) {
 			raw.copyTo(bg);
